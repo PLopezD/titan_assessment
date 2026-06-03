@@ -2,6 +2,15 @@
 
 A LangGraph-based research agent that provides factual, academic, and economic research using free APIs.
 
+Design Decisions: 
+ReAct Agent for tool routing - This is how langgraph does this under the hood so I decided to go with it rather than fight it, its more token efficient as well so it makes sense for a free project. It uses the description of the tools given and a light model to decide what tool to use for each query. It's quick and accurrate. 
+
+I went with the free teir of gemini for this as well, it seemed like the strongest model with a free teir. I haven't tried grok. Given how many external requests we were already making with all the tools I didn't think a larger public model made sense, latency is already high with the agent. With Gemini 2.5 Flash we get quick and accurate responses. 
+
+I added a "tools used" section in the response from the agent but I'd rely on a library for charting this stuff typically. In this case, with the library I've chosen they offer LangSmith which is a great tool for monitoring/logging/evals for agent development.
+
+![Research Agent Graph](v1_agent_graph.png)
+
 ## Setup
 
 ```bash

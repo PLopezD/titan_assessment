@@ -24,6 +24,11 @@ def main(query: str, verbose: bool):
 
     click.echo("\n--- Research Result ---")
     click.echo(response["result"])
+    if response["tool_calls"]:
+        click.echo("\n--- Tools Used ---")
+        for tool_call in response["tool_calls"]:
+            click.echo(f"  - {tool_call}")
+
 
     if verbose:
         if response["tool_calls"]:
