@@ -5,6 +5,7 @@ Provides arXiv paper search capabilities using the free arXiv API
 
 import requests
 import xml.etree.ElementTree as ET
+import time
 from langchain_core.tools import tool
 
 @tool
@@ -21,79 +22,85 @@ def arxiv_search(query: str) -> str:
     Returns:
         str: Formatted search results from arXiv with paper titles, authors, and abstracts
     """
-    try:
-        # arXiv API endpoint
-        base_url = "http://export.arxiv.org/api/query"
+    max_retries = 2
 
-        # Prepare search parameters
-        params = {
-            "search_query": f"all:{query}",
-            "start": 0,
-            "max_results": 5,
-            "sortBy": "submittedDate",
-            "sortOrder": "descending"
-        }
+    for attempt in range(max_retries):
+        try:
+            # arXiv API endpoint
+            base_url = "http://export.arxiv.org/api/query"
 
-        headers = {
-            "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
-        }
+            # Prepare search parameters
+            params = {
+                "search_query": f"all:{query}",
+                "start": 0,
+                "max_results": 5,
+                "sortBy": "submittedDate",
+                "sortOrder": "descending"
+            }
 
-        response = requests.get(base_url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+            headers = {
+                "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
+            }
 
-        # Parse XML response
-        root = ET.fromstring(response.content)
+            response = requests.get(base_url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
 
-        # Define namespaces
-        namespaces = {
-            'atom': 'http://www.w3.org/2005/Atom',
-            'arxiv': 'http://arxiv.org/schemas/atom'
-        }
+            # Parse XML response
+            root = ET.fromstring(response.content)
 
-        # Extract entries
-        entries = root.findall('.//atom:entry', namespaces)
+            # Define namespaces
+            namespaces = {
+                'atom': 'http://www.w3.org/2005/Atom',
+                'arxiv': 'http://arxiv.org/schemas/atom'
+            }
 
-        if not entries:
-            return f"No arXiv papers found for query: '{query}'"
+            # Extract entries
+            entries = root.findall('.//atom:entry', namespaces)
 
-        # Format results
-        results = []
-        for entry in entries[:5]:
-            try:
-                title = entry.find('atom:title', namespaces)
-                title = title.text.strip() if title is not None else "No title"
+            if not entries:
+                return f"No arXiv papers found for query: '{query}'"
 
-                authors = entry.findall('atom:author/atom:name', namespaces)
-                author_names = [author.text for author in authors if author.text]
-                author_str = ", ".join(author_names[:3])  # Limit to first 3 authors
-                if len(author_names) > 3:
-                    author_str += " et al."
+            # Format results
+            results = []
+            for entry in entries[:5]:
+                try:
+                    title = entry.find('atom:title', namespaces)
+                    title = title.text.strip() if title is not None else "No title"
 
-                summary = entry.find('atom:summary', namespaces)
-                summary = summary.text.strip()[:200] + "..." if summary is not None else "No summary"
+                    authors = entry.findall('atom:author/atom:name', namespaces)
+                    author_names = [author.text for author in authors if author.text]
+                    author_str = ", ".join(author_names[:3])  # Limit to first 3 authors
+                    if len(author_names) > 3:
+                        author_str += " et al."
 
-                published = entry.find('atom:published', namespaces)
-                pub_date = published.text[:10] if published is not None else "Unknown date"
+                    summary = entry.find('atom:summary', namespaces)
+                    summary = summary.text.strip()[:200] + "..." if summary is not None else "No summary"
 
-                arxiv_id = entry.find('atom:id', namespaces)
-                paper_url = arxiv_id.text if arxiv_id is not None else ""
+                    published = entry.find('atom:published', namespaces)
+                    pub_date = published.text[:10] if published is not None else "Unknown date"
 
-                results.append(f"**{title}**\nAuthors: {author_str}\nPublished: {pub_date}\nSummary: {summary}\nURL: {paper_url}")
+                    arxiv_id = entry.find('atom:id', namespaces)
+                    paper_url = arxiv_id.text if arxiv_id is not None else ""
 
-            except Exception as e:
-                continue  # Skip malformed entries
+                    results.append(f"**{title}**\nAuthors: {author_str}\nPublished: {pub_date}\nSummary: {summary}\nURL: {paper_url}")
 
-        if results:
-            return f"arXiv search results for '{query}':\n\n" + "\n\n".join(results)
-        else:
-            return f"Found entries but could not parse results for query: '{query}'"
+                except Exception as e:
+                    continue  # Skip malformed entries
 
-    except requests.RequestException as e:
-        return f"Error searching arXiv: {str(e)}"
-    except ET.ParseError as e:
-        return f"Error parsing arXiv response: {str(e)}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+            if results:
+                return f"arXiv search results for '{query}':\n\n" + "\n\n".join(results)
+            else:
+                return f"Found entries but could not parse results for query: '{query}'"
+
+        except requests.RequestException as e:
+            if attempt == max_retries - 1:
+                return f"arXiv API unavailable after {max_retries} attempts. Service may be temporarily down. Please try again later."
+            time.sleep(1)  # Brief pause before retry
+            continue
+        except ET.ParseError as e:
+            return f"Error parsing arXiv response: {str(e)}"
+        except Exception as e:
+            return f"Unexpected error accessing arXiv: {str(e)}"
 
 def test_arxiv_search(query):
     """Test function for the arXiv tool"""

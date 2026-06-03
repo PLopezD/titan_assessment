@@ -6,6 +6,7 @@ Provides access to Federal Reserve Economic Data (FRED) for economic indicators 
 import os
 import requests
 import json
+import time
 from langchain_core.tools import tool
 
 @tool
@@ -21,71 +22,77 @@ def fred_search(query: str) -> str:
     Returns:
         str: Formatted search results from FRED with economic data series information
     """
-    try:
-        # Get API key from environment
-        api_key = os.getenv("FRED_API_KEY")
-        if not api_key:
-            return "Error: FRED_API_KEY environment variable not set. Please obtain a free API key from https://fred.stlouisfed.org/docs/api/fred/"
+    # Get API key from environment
+    api_key = os.getenv("FRED_API_KEY")
+    if not api_key:
+        return "Error: FRED_API_KEY environment variable not set. Please obtain a free API key from https://fred.stlouisfed.org/docs/api/fred/"
 
-        # FRED API endpoint for series search
-        base_url = "https://api.stlouisfed.org/fred/series/search"
+    max_retries = 2
 
-        # Search parameters
-        params = {
-            "search_text": query,
-            "api_key": api_key,
-            "file_type": "json",
-            "limit": 5,
-            "order_by": "popularity",
-            "sort_order": "desc"
-        }
+    for attempt in range(max_retries):
+        try:
+            # FRED API endpoint for series search
+            base_url = "https://api.stlouisfed.org/fred/series/search"
 
-        headers = {
-            "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
-        }
+            # Search parameters
+            params = {
+                "search_text": query,
+                "api_key": api_key,
+                "file_type": "json",
+                "limit": 5,
+                "order_by": "popularity",
+                "sort_order": "desc"
+            }
 
-        response = requests.get(base_url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+            headers = {
+                "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
+            }
 
-        data = response.json()
+            response = requests.get(base_url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
 
-        # Check for API errors
-        if "error_code" in data:
-            return f"FRED API Error: {data.get('error_message', 'Unknown error')}"
+            data = response.json()
 
-        # Extract series data
-        series_list = data.get("seriess", [])
+            # Check for API errors
+            if "error_code" in data:
+                return f"FRED API Error: {data.get('error_message', 'Unknown error')}"
 
-        if not series_list:
-            return f"No economic data series found for query: '{query}'"
+            # Extract series data
+            series_list = data.get("series", [])
 
-        # Format results
-        results = []
-        for series in series_list[:5]:
-            try:
-                series_id = series.get("id", "N/A")
-                title = series.get("title", "No title")
-                units = series.get("units", "N/A")
-                frequency = series.get("frequency", "N/A")
-                last_updated = series.get("last_updated", "N/A")
-                notes = series.get("notes", "")[:150] + "..." if series.get("notes") else "No description"
+            if not series_list:
+                return f"No economic data series found for query: '{query}'"
 
-                results.append(f"**{title}** (ID: {series_id})\nUnits: {units} | Frequency: {frequency}\nLast Updated: {last_updated}\nDescription: {notes}")
+            # Format results
+            results = []
+            for series in series_list[:5]:
+                try:
+                    series_id = series.get("id", "N/A")
+                    title = series.get("title", "No title")
+                    units = series.get("units", "N/A")
+                    frequency = series.get("frequency", "N/A")
+                    last_updated = series.get("last_updated", "N/A")
+                    notes = series.get("notes", "")[:150] + "..." if series.get("notes") else "No description"
 
-            except Exception as e:
-                continue  # Skip malformed entries
+                    results.append(f"**{title}** (ID: {series_id})\nUnits: {units} | Frequency: {frequency}\nLast Updated: {last_updated}\nDescription: {notes}")
 
-        if results:
-            return f"FRED economic data search results for '{query}':\n\n" + "\n\n".join(results)
-        else:
-            return f"Found entries but could not parse results for query: '{query}'"
+                except Exception as e:
+                    continue  # Skip malformed entries
 
-    except requests.RequestException as e:
-        return f"Error accessing FRED API: {str(e)}"
-    except json.JSONDecodeError as e:
-        return f"Error parsing FRED response: {str(e)}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+            if results:
+                return f"FRED economic data search results for '{query}':\n\n" + "\n\n".join(results)
+            else:
+                return f"Found entries but could not parse results for query: '{query}'"
+
+        except requests.RequestException as e:
+            if attempt == max_retries - 1:
+                return f"FRED API unavailable after {max_retries} attempts. Service may be temporarily down. Please try again later."
+            time.sleep(1)  # Brief pause before retry
+            continue
+        except json.JSONDecodeError as e:
+            return f"Error parsing FRED response: {str(e)}"
+        except Exception as e:
+            return f"Unexpected error accessing FRED: {str(e)}"
 
 def test_fred_search(query):
     """Test function for the FRED tool"""

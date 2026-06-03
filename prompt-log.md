@@ -560,4 +560,298 @@ self.react_agent = create_react_agent(self.llm, [
 
 **Status:** FRED tool successfully integrated - research agent now provides comprehensive coverage across general knowledge, academic research, and economic data
 
+### User Request 16
+**User:** add a new node after the research node, it should take the response from the tools and synthesise them to a clear and compact response to the user. it should Cites its sources with enough detail to verify (article titles, paper IDs, URLs) Distinguishes between information retrieved from tools and any reasoning or inference the model adds
+
+**Assistant Response:**
+1. **Enhanced State Schema**: Added synthesis fields to track processing stages
+   ```python
+   class State(TypedDict):
+       query: str
+       result: str
+       session_id: str
+       tool_calls: List[str]
+       raw_results: str          # New: stores raw tool outputs
+       synthesized_result: str   # New: stores final synthesized response
+   ```
+
+2. **Updated Workflow Architecture**: Changed from single node to two-stage process
+   - **Before**: START → research → END
+   - **After**: START → research → synthesize → END
+   - Research node now stores raw results for synthesis processing
+
+3. **Created Synthesis Node**: New `synthesis_node` function with comprehensive processing
+   - Takes raw tool results from research phase
+   - Uses LLM to create clear, compact responses with proper citations
+   - Includes structured prompting for source verification and reasoning distinction
+   - Handles both API-enabled and development fallback modes
+
+4. **Synthesis Capabilities**:
+   - **Source Citation**: Extracts and formats article titles, paper IDs, URLs from tool responses
+   - **Information Distinction**: Clearly separates factual data from tools vs. added reasoning/inference
+   - **Compact Synthesis**: Combines multiple tool outputs into coherent, readable responses
+   - **Verification Support**: Provides detailed citations for fact-checking
+
+5. **Enhanced CLI Output**: Updated main.py to show synthesis results
+   - Default: Shows synthesized response with citations
+   - Verbose mode: Shows tools used, raw research data, and session ID
+   - Clear separation between raw data and processed synthesis
+
+6. **Testing Results**:
+   - Graph creation: ✅ Successfully compiled with two-node workflow
+   - Synthesis functionality: ✅ Properly processes and cites tool outputs
+   - Citation format: ✅ Distinguishes sources from reasoning in structured format
+
+**Files Modified:**
+- `agents/ResearchAgent.py` - Added synthesis_node, updated workflow, enhanced state schema
+- `main.py` - Enhanced verbose output to show raw vs. synthesized results
+
+**Workflow Enhancement:**
+```python
+# New two-stage workflow
+workflow = StateGraph(State)
+workflow.add_node("research", self.research_node)      # Gather data
+workflow.add_node("synthesize", self.synthesis_node)   # Process & cite
+workflow.add_edge(START, "research")
+workflow.add_edge("research", "synthesize")
+workflow.add_edge("synthesize", END)
+```
+
+**Example Synthesis Output:**
+```
+**Answer to: What is GDP?**
+
+Gross Domestic Product (GDP) is a monetary measure...
+
+**Sources:**
+- Wikipedia: "Gross domestic product" article
+- Tool: wikipedia_search
+
+**Reasoning/Inference Added:**
+No additional reasoning was required beyond synthesizing the provided definitions.
+```
+
+**Benefits:**
+- **Verifiable Information**: Detailed source citations enable fact-checking
+- **Clear Attribution**: Distinguishes factual data from AI reasoning
+- **Compact Presentation**: Multiple tool outputs synthesized into readable format
+- **Enhanced User Experience**: Professional, cited responses vs. raw tool dumps
+
+**Status:** Synthesis node successfully implemented - research agent now provides clear, cited, and verifiable responses with proper source attribution
+
+### User Request 17
+**User:** ensure that for all tools (wikipedia, FRED, Arxiv) that requests are only made to the api twice before returning a graceful responses about the api not being available
+
+**Assistant Response:**
+1. **Retry Logic Implementation**: Added consistent retry pattern across all API tools
+   - **Maximum attempts**: 2 requests per API call as requested
+   - **Retry pattern**: Loop with attempt counter and graceful failure handling
+   - **Timing**: 1-second pause between retry attempts to avoid overwhelming APIs
+
+2. **Wikipedia Tool Enhancement**:
+   ```python
+   max_retries = 2
+   for attempt in range(max_retries):
+       try:
+           # API call logic
+       except requests.RequestException as e:
+           if attempt == max_retries - 1:
+               return f"Wikipedia API unavailable after {max_retries} attempts. Service may be temporarily down. Please try again later."
+           time.sleep(1)
+           continue
+   ```
+
+3. **arXiv Tool Enhancement**: Same retry pattern implemented
+   - Handles network timeouts and connection errors gracefully
+   - Returns user-friendly message: "arXiv API unavailable after 2 attempts..."
+   - Maintains XML parsing and other error handling
+
+4. **FRED Tool Enhancement**: Same retry pattern implemented
+   - Preserves API key validation logic
+   - Graceful failure: "FRED API unavailable after 2 attempts..."
+   - Maintains JSON parsing and FRED-specific error handling
+
+5. **Graceful Failure Messages**: Consistent across all tools
+   - Clear indication of service unavailability
+   - Suggests temporary nature ("may be temporarily down")
+   - User guidance ("Please try again later")
+   - No technical error details exposed to users
+
+6. **Testing Results**:
+   - Graph creation: ✅ Successful with retry logic
+   - Wikipedia API: ✅ Working with retry capability
+   - All tools: ✅ Handle failures gracefully without agent crashes
+   - Synthesis node: ✅ Continues to work with enhanced tool reliability
+
+**Files Modified:**
+- `tools/wikipedia_tool.py` - Added retry logic with max 2 attempts
+- `tools/arxiv_tool.py` - Added retry logic with max 2 attempts
+- `tools/fred_tool.py` - Added retry logic with max 2 attempts
+
+**Enhanced Reliability Features:**
+- **Consistent Retry Pattern**: All tools use identical retry logic
+- **User-Friendly Errors**: No technical details, clear guidance
+- **Service Resilience**: Agent continues working even with partial API failures
+- **Synthesis Integration**: Retry failures are properly handled in synthesis node
+
+**Error Message Examples:**
+```
+"Wikipedia API unavailable after 2 attempts. Service may be temporarily down. Please try again later."
+"arXiv API unavailable after 2 attempts. Service may be temporarily down. Please try again later."
+"FRED API unavailable after 2 attempts. Service may be temporarily down. Please try again later."
+```
+
+**Benefits:**
+- **Improved User Experience**: Clear, helpful error messages
+- **Service Reliability**: Handles temporary API outages gracefully
+- **Consistent Behavior**: All tools behave identically under failure
+- **Agent Stability**: No crashes from API failures
+
+**Status:** Retry logic successfully implemented - all tools now make maximum 2 API attempts before graceful failure
+
+### User Request 18
+**User:** ensure the sources listed in synthesis always include some form of (article titles, paper IDs, URLs)
+
+**Assistant Response:**
+1. **Enhanced Source Extraction**: Added `extract_source_details()` method to synthesis node
+   - **Wikipedia Sources**: Extracts article titles and generates Wikipedia URLs
+   - **arXiv Sources**: Extracts paper titles, paper IDs, and arXiv URLs
+   - **FRED Sources**: Extracts series titles, series IDs, and FRED URLs
+
+2. **Regex Pattern Matching**: Implemented specific extraction patterns for each tool
+   ```python
+   # Wikipedia: Extract titles from **Title**: format
+   wiki_matches = re.findall(r'\*\*([^*]+)\*\*:', text_content)
+
+   # arXiv: Extract URLs and titles from structured output
+   arxiv_matches = re.findall(r'URL: (http://arxiv\.org/abs/[\w\.]+)', text_content)
+
+   # FRED: Extract series info from **Title** (ID: series_id) format
+   fred_matches = re.findall(r'\*\*([^*]+)\*\* \(ID: ([^)]+)\)', text_content)
+   ```
+
+3. **Data Structure Handling**: Enhanced parsing to handle complex response formats
+   - Handles both string and list data types from raw_results
+   - Extracts text content from structured message objects
+   - Maintains compatibility with all response formats
+
+4. **Enhanced Synthesis Prompt**: Updated LLM instructions to require specific citations
+   - Explicit requirement for article titles, paper IDs, and URLs
+   - Structured citation format specification
+   - Enhanced fallback synthesis with detailed source formatting
+
+5. **Citation Format Examples**:
+   ```
+   Wikipedia: 'Machine Learning' article (https://en.wikipedia.org/wiki/Machine_Learning)
+   arXiv: 'Deep Learning Networks' (ID: 2301.12345, http://arxiv.org/abs/2301.12345)
+   FRED: 'Gross Domestic Product' (Series ID: GDP, https://fred.stlouisfed.org/series/GDP)
+   ```
+
+6. **Testing Results**:
+   - Graph creation: ✅ Successful with enhanced citation extraction
+   - Source parsing: ✅ Properly extracts titles, IDs, and URLs when available
+   - Synthesis output: ✅ Includes verifiable source information with specific identifiers
+
+**Files Modified:**
+- `agents/ResearchAgent.py` - Added extract_source_details method, enhanced synthesis_node
+
+**Enhanced Citation Features:**
+- **Verifiable Sources**: All citations include specific identifiers for verification
+- **Complete Information**: Article titles, paper IDs, and URLs when available
+- **Structured Format**: Consistent citation format across all tools
+- **Fallback Handling**: Graceful handling when specific details aren't available
+
+**Benefits:**
+- **Research Verification**: Users can verify all cited information
+- **Academic Standards**: Meets citation requirements with specific identifiers
+- **Source Transparency**: Clear attribution with accessible links
+- **Professional Output**: High-quality, citable research responses
+
+**Status:** Enhanced citation system successfully implemented - synthesis now requires and includes article titles, paper IDs, and URLs for all sources
+
+### User Request 19
+**User:** add a pre-research node - a question like 'What is the best restaurant in New York City?' is out of scope for a research agent like this and should return 'Out of Scope' to the user
+
+**Assistant Response:**
+1. **Scope Validation Implementation**: Added pre-research node to filter inappropriate queries
+   - **Node Name**: `scope_check_node` - validates query scope before research begins
+   - **Workflow Update**: START → scope_check → (research OR out_of_scope) → synthesize → END
+   - **Conditional Routing**: Uses `route_after_scope` function for workflow branching
+
+2. **Enhanced State Schema**: Added scope tracking field
+   ```python
+   class State(TypedDict):
+       query: str
+       result: str
+       session_id: str
+       tool_calls: List[str]
+       raw_results: str
+       synthesized_result: str
+       scope_check: str  # New: tracks scope validation results
+   ```
+
+3. **Scope Classification Logic**: Multi-layered validation approach
+   - **Rule-based filtering**: Keyword detection for obvious out-of-scope patterns
+     ```python
+     out_of_scope_keywords = [
+         "best restaurant", "recommend", "opinion", "taste", "favorite",
+         "what should i", "personal preference", "subjective", "rating",
+         "review", "which is better", "personal experience"
+     ]
+     ```
+   - **In-scope patterns**: Factual, academic, and economic research keywords
+   - **LLM fallback**: Uses Google AI model for borderline cases with structured prompting
+
+4. **Out-of-Scope Response**: Clear messaging for rejected queries
+   ```
+   "Out of Scope: This research agent is designed for factual, academic, and economic research.
+   Questions asking for personal recommendations, opinions, or subjective evaluations are
+   outside the scope of available tools (Wikipedia, arXiv, FRED)."
+   ```
+
+5. **Conditional Workflow Routing**: Intelligent path selection
+   ```python
+   workflow.add_conditional_edges(
+       "scope_check",
+       self.route_after_scope,
+       {"research": "research", "out_of_scope": END}
+   )
+   ```
+
+6. **Testing Results**:
+   - **Out-of-scope test**: ✅ "What is the best restaurant in New York City?" → "Out of Scope" response
+   - **In-scope test**: ✅ "What is machine learning?" → Full research with Wikipedia sources
+   - **Workflow routing**: ✅ Properly routes to research or direct end based on scope
+
+**Files Modified:**
+- `agents/ResearchAgent.py` - Added scope_check_node, route_after_scope, updated workflow and state schema
+
+**Enhanced Workflow Architecture:**
+```python
+workflow = StateGraph(State)
+workflow.add_node("scope_check", self.scope_check_node)
+workflow.add_node("research", self.research_node)
+workflow.add_node("synthesize", self.synthesis_node)
+workflow.add_edge(START, "scope_check")
+workflow.add_conditional_edges(
+    "scope_check",
+    self.route_after_scope,
+    {"research": "research", "out_of_scope": END}
+)
+```
+
+**Scope Validation Features:**
+- **Subjective Query Detection**: Filters recommendations, opinions, personal preferences
+- **Research Query Recognition**: Allows factual, academic, and economic questions
+- **Professional Messaging**: Clear explanation of agent capabilities and limitations
+- **Efficient Processing**: Stops inappropriate queries early, saving API calls
+
+**Benefits:**
+- **Focused Capability**: Agent stays within its research domain
+- **User Guidance**: Clear feedback on appropriate query types
+- **Resource Efficiency**: Avoids wasted API calls on unsuitable queries
+- **Professional Standards**: Maintains academic and research focus
+
+**Status:** Scope validation successfully implemented - research agent now filters out subjective/recommendation queries and provides clear "Out of Scope" messaging
+
 ---

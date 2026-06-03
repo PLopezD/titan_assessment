@@ -4,6 +4,7 @@ Provides Wikipedia search and article retrieval capabilities using the free Wiki
 """
 
 import requests
+import time
 from langchain_core.tools import tool
 
 @tool
@@ -19,42 +20,48 @@ def wikipedia_search(query: str) -> str:
     Returns:
         str: Formatted search results from Wikipedia
     """
-    try:
-        # Use Wikipedia's standard API for search
-        search_url = "https://en.wikipedia.org/w/api.php"
-        search_params = {
-            "action": "query",
-            "list": "search",
-            "srsearch": query,
-            "srlimit": 3,
-            "format": "json"
-        }
+    max_retries = 2
 
-        headers = {
-            "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
-        }
+    for attempt in range(max_retries):
+        try:
+            # Use Wikipedia's standard API for search
+            search_url = "https://en.wikipedia.org/w/api.php"
+            search_params = {
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "srlimit": 3,
+                "format": "json"
+            }
 
-        response = requests.get(search_url, params=search_params, headers=headers, timeout=10)
-        response.raise_for_status()
+            headers = {
+                "User-Agent": "Research-Agent/1.0 (https://github.com/research-agent)"
+            }
 
-        search_results = response.json()
+            response = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+            response.raise_for_status()
 
-        if not search_results.get("query", {}).get("search"):
-            return f"No Wikipedia articles found for query: {query}"
+            search_results = response.json()
 
-        # Format results
-        results = []
-        for page in search_results["query"]["search"][:3]:
-            title = page.get("title", "")
-            snippet = page.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", "")
-            results.append(f"- **{title}**: {snippet}")
+            if not search_results.get("query", {}).get("search"):
+                return f"No Wikipedia articles found for query: '{query}'"
 
-        return f"Wikipedia search results for '{query}':\n" + "\n".join(results)
+            # Format results
+            results = []
+            for page in search_results["query"]["search"][:3]:
+                title = page.get("title", "")
+                snippet = page.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", "")
+                results.append(f"- **{title}**: {snippet}")
 
-    except requests.RequestException as e:
-        return f"Error searching Wikipedia: {str(e)}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
+            return f"Wikipedia search results for '{query}':\n" + "\n".join(results)
+
+        except requests.RequestException as e:
+            if attempt == max_retries - 1:
+                return f"Wikipedia API unavailable after {max_retries} attempts. Service may be temporarily down. Please try again later."
+            time.sleep(1)  # Brief pause before retry
+            continue
+        except Exception as e:
+            return f"Unexpected error accessing Wikipedia: {str(e)}"
 
 def test_wikipedia_search(query):
     """Test function for the Wikipedia tool"""
