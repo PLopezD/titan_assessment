@@ -6,7 +6,9 @@ A simple CLI wrapper for LangGraph research agents
 
 import click
 from agents.ResearchAgent import ResearchAgent
+from dotenv import load_dotenv
 
+load_dotenv()
 
 @click.command()
 @click.argument('query', required=True)
@@ -18,10 +20,16 @@ def main(query: str, verbose: bool):
         click.echo(f"Executing research query: {query}")
 
     agent = ResearchAgent()
-    result = agent.research(query)
+    response = agent.research(query)
 
     click.echo("\n--- Research Result ---")
-    click.echo(result)
+    click.echo(response["result"])
+
+    if verbose and response["tool_calls"]:
+        click.echo("\n--- Tools Used ---")
+        for tool_call in response["tool_calls"]:
+            click.echo(f"  - {tool_call}")
+        click.echo(f"\nSession ID: {response['session_id']}")
 
 if __name__ == "__main__":
     main()

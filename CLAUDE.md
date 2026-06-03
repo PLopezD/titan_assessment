@@ -5,8 +5,10 @@
 ### Free Tools Only
 This project uses **ONLY FREE TOOLS** throughout the entire development lifecycle. No paid APIs or services are permitted.
 
+### DO NOT USE STRONG TYPING IN PYTHON IN THIS PROJECT. WE DO NOT NEED TO TYPE CHECK RIGHT NOW
+
 ### Approved Tools & Services
-- **LLM Model**: Ollama with Qwen2.5:7b (free local model)
+- **LLM Model**: Google AI Studio with Gemini Pro (free tier)
 - **Framework**: LangChain + LangGraph (open source)
 - **Dependencies**: Open source Python packages only
 - **Development**: Local development environment
@@ -14,7 +16,6 @@ This project uses **ONLY FREE TOOLS** throughout the entire development lifecycl
 ### Prohibited Tools
 - OpenAI API (paid service)
 - Anthropic Claude API (paid service)
-- Google Gemini API (paid service)
 - Any other paid LLM services
 
 ## Development Commands
@@ -36,12 +37,14 @@ python main.py --help
 ```
 
 ## Model Configuration
-- **Model**: ollama:qwen2.5:7b
+- **Model**: Google AI Studio Gemini Pro
 - **Temperature**: 0.2
-- **API**: LangGraph init_chat_model
+- **API Key**: GOOGLE_AI_STUDIO_API_KEY environment variable
 
 ## Project Structure
 - `main.py` - CLI wrapper and agent implementation
 - `requirements.txt` - Free dependencies only
 - `CLAUDE.md` - This guidelines file
 - `prompt-log.md` - Session documentation
+- `/agents` - Langgraph Agents
+- `/tools` - Tools for API calls
